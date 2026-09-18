@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Case File — Outbound Signals (Live)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EFEAD9; --paper-2:#E6E0CC; --ink:#1C1A15; --ink-soft:#4A4536;
+    --redact:#141210; --stamp:#A32B23; --highlight:#E8C458; --line:#C9C0A4;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:'Libre Baskerville', Georgia, serif; }
+  .wrap{ max-width: 800px; margin: 0 auto; padding: 36px 24px 80px; }
+  .controls{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 20px; align-items:center; }
+  select, button{
+    font-family:'Courier Prime', monospace; font-size: 13px;
+    padding: 9px 12px; border: 1px solid var(--ink); background: var(--paper-2); color: var(--ink);
+  }
+  button{ cursor:pointer; background: var(--ink); color: var(--paper); }
+  button:disabled{ opacity: 0.5; cursor: wait; }
+  .folder{ border: 1px solid var(--line); background: var(--paper); padding: 34px 40px 30px; min-height: 200px; }
+  .case-title{ font-family:'Special Elite', monospace; font-size: 20px; margin:0 0 6px 0; }
+  .case-meta{ font-size: 12px; color: var(--ink-soft); font-family:'Courier Prime',monospace; margin-bottom: 26px; }
+  .case{ margin-bottom: 44px; border-bottom: 1px dashed var(--line); padding-bottom: 30px; }
+  .case:last-child{ border-bottom: none; }
+  .case-name{ font-family:'Special Elite', monospace; font-size: 17px; margin: 0 0 2px 0; }
+  .case-sub{ font-size: 11.5px; color: var(--ink-soft); font-family:'Courier Prime',monospace; margin-bottom: 14px; }
+  .ledger{ display:grid; grid-template-columns: repeat(3,1fr); font-family:'Courier Prime',monospace; font-size: 12.5px;
+    border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); padding: 10px 0; margin-bottom: 16px; }
+  .ledger-item .k{ color: var(--ink-soft); font-size: 10.5px; margin-bottom: 3px; }
+  .ledger-item .v{ font-size: 14px; }
+  .clip{ font-size: 12.5px; color: var(--ink-soft); margin-bottom: 10px; padding-left: 14px; border-left: 2px solid var(--line); }
+  .clip b{ color: var(--ink); font-weight: 700; }
+  .memo{ background: var(--paper-2); border: 1px solid var(--line); padding: 20px 24px; margin-top: 14px; }
+  .memo-label{ font-family:'Special Elite', monospace; font-size: 11px; color: var(--ink-soft); margin-bottom: 10px; }
+  .memo-body{ font-size: 14px; line-height: 1.7; font-style: italic; white-space: pre-wrap; }
+  .memo-sign{ margin-top: 12px; font-size: 13px; }
+  .status{ font-family:'Courier Prime',monospace; font-size: 13px; color: var(--ink-soft); }
+  .error{ color: var(--stamp); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="controls">
+    <select id="signal">
+      <option value="material weakness in our internal control">material weakness in internal control</option>
+      <option value="cybersecurity incident">cybersecurity incident</option>
+      <option value="increased costs associated with cloud">increased cloud costs</option>
+      <option value="data storage costs">data storage costs</option>
+      <option value="legacy systems">legacy systems</option>
+      <option value="difficulty attracting and retaining qualified personnel">talent gap</option>
+      <option value="integration of acquired">M&amp;A integration bottleneck</option>
+    </select>
+    <button id="run">Run pipeline</button>
+    <span class="status" id="status"></span>
+  </div>
+
+  <div class="folder">
+    <p class="case-title">Outbound Signal File</p>
+    <p class="case-meta" id="meta">SOURCE: SEC EDGAR 10-K FULL-TEXT SEARCH — select a signal and run the pipeline</p>
+    <div id="results"></div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "http://localhost:8000";
+
+const runBtn = document.getElementById('run');
+const statusEl = document.getElementById('status');
+const resultsEl = document.getElementById('results');
+const metaEl = document.getElementById('meta');
+const signalEl = document.getElementById('signal');
+
+function fmtMoney(v){
+  if (v === null || v === undefined) return '—';
+  return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString();
+}
+
+function renderCase(c){
+  const div = document.createElement('div');
+  div.className = 'case';
+  const fs = c.financial_snapshot || {};
+  const roles = (c.open_roles || []).join(' · ') || 'none detected';
+  const addressee = c.exec_name ? `${c.exec_name}${c.exec_title ? ' — ' + c.exec_title : ''}` : 'name not found in signature block';
+  div.innerHTML = `
+    <p class="case-name">${c.company}</p>
+    <p class="case-sub">CIK ${c.cik} — GAP: ${c.gap}</p>
+    <div class="ledger">
+      <div class="ledger-item"><div class="k">REVENUE</div><div class="v">${fmtMoney(fs.Revenues)}</div></div>
+      <div class="ledger-item"><div class="k">NET INCOME</div><div class="v">${fmtMoney(fs.NetIncomeLoss)}</div></div>
+      <div class="ledger-item"><div class="k">OPEN ROLES</div><div class="v">${(c.open_roles || []).length}</div></div>
+    </div>
+    <p class="clip"><b>Signed by:</b> ${addressee}</p>
+    <p class="clip"><b>Hiring signal:</b> ${roles}</p>
+    <div class="memo">
+      <div class="memo-label">DRAFT — OUTBOUND LETTER</div>
+      <div class="memo-body">${c.pitch || '(pitch generation failed — check GROQ_API_KEY)'}</div>
+    </div>
+  `;
+  return div;
+}
+
+runBtn.addEventListener('click', async () => {
+  runBtn.disabled = true;
+  statusEl.textContent = 'Running pipeline against live SEC EDGAR data…';
+  statusEl.classList.remove('error');
+  resultsEl.innerHTML = '';
+  try {
+    const res = await fetch(`${API_BASE}/pipeline/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signal: signalEl.value, limit: 5 })
+    });
+    if (!res.ok) throw new Error(`Backend returned ${res.status}`);
+    const data = await res.json();
+    metaEl.textContent = `SOURCE: SEC EDGAR 10-K FULL-TEXT SEARCH — QUERY: "${signalEl.value}" — ${data.length} result(s)`;
+    if (data.length === 0){
+      resultsEl.innerHTML = '<p class="status">No filings matched this phrase right now.</p>';
+    } else {
+      data.forEach(c => resultsEl.appendChild(renderCase(c)));
+    }
+    statusEl.textContent = 'Done.';
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}. Is the backend running at ${API_BASE}?`;
+    statusEl.classList.add('error');
+  } finally {
+    runBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
